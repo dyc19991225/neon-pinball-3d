@@ -154,12 +154,37 @@ export class NeonPinballTable {
   public onCallout: ((msg: string) => void) | null = null;
 
   private readonly ringGeo = new THREE.SphereGeometry(1, 20, 14);
+  private readonly ballGeo = new THREE.SphereGeometry(R_BALL, 24, 20);
+
+  private static readSavedHighScore(): number {
+    try {
+      const saved = Number(localStorage.getItem('neon_pinball_hi') || '0');
+      return Number.isFinite(saved) && saved >= 0 ? saved : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private static writeSavedHighScore(score: number): void {
+    try {
+      localStorage.setItem('neon_pinball_hi', String(score));
+    } catch {
+      // Ignore SecurityError inside sandboxed iframes or strict privacy modes
+    }
+  }
+
+  private disposeBall(b: BallEntity): void {
+    this.scene.remove(b.mesh);
+    this.scene.remove(b.trailMesh);
+    (b.mesh.material as THREE.Material).dispose();
+    b.trailGeo.dispose();
+    (b.trailMesh.material as THREE.Material).dispose();
+  }
 
   constructor(scene: THREE.Scene, audio: PinballAudio) {
     this.scene = scene;
     this.audio = audio;
-    const saved = Number(localStorage.getItem('neon_pinball_hi') || '0');
-    if (Number.isFinite(saved)) this.highScore = saved;
+    this.highScore = NeonPinballTable.readSavedHighScore();
 
     this.buildCabinetAndWalls();
     this.buildFlippers();
@@ -571,7 +596,7 @@ export class NeonPinballTable {
 
   private createBall(x: number, z: number, vx: number, vz: number, hex: number): void {
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(R_BALL, 24, 20),
+      this.ballGeo,
       new THREE.MeshStandardMaterial({
         color: 0xf8fafc,
         emissive: hex,
@@ -681,9 +706,7 @@ export class NeonPinballTable {
 
   public resetNewGame(): void {
     for (const b of this.balls) {
-      this.scene.remove(b.mesh);
-      this.scene.remove(b.trailMesh);
-      b.trailGeo.dispose();
+      this.disposeBall(b);
     }
     this.balls.length = 0;
     this.score = 0;
@@ -706,7 +729,7 @@ export class NeonPinballTable {
     this.score += Math.round(pts * this.multiplier);
     if (this.score > this.highScore) {
       this.highScore = this.score;
-      localStorage.setItem('neon_pinball_hi', String(this.highScore));
+      NeonPinballTable.writeSavedHighScore(this.highScore);
     }
   }
 
@@ -810,9 +833,7 @@ export class NeonPinballTable {
 
       // Check bottom drain (`z > 15.0`)
       if (b.z > 15.0) {
-        this.scene.remove(b.mesh);
-        this.scene.remove(b.trailMesh);
-        b.trailGeo.dispose();
+        this.disposeBall(b);
         this.balls.splice(i, 1);
 
         if (this.balls.length > 0) {
