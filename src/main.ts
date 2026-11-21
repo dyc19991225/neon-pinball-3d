@@ -172,20 +172,40 @@ bindHoldButton(
   () => table.setPlungerHold(false)
 );
 
-// Clicking left/right half of canvas also fires flippers intuitively!
+// Clicking/touching left/right half of canvas fires flippers with per-pointerId tracking
+// so multi-touch drags across mid-screen never leave a flipper stuck UP.
+const activeViewportPointers = new Map<number, 'left' | 'right'>();
+
+function syncViewportFlippers(): void {
+  let leftHeld = false;
+  let rightHeld = false;
+  for (const side of activeViewportPointers.values()) {
+    if (side === 'left') leftHeld = true;
+    else rightHeld = true;
+  }
+  table.setFlipperPressed('left', leftHeld);
+  table.setFlipperPressed('right', rightHeld);
+}
+
 viewport.addEventListener('pointerdown', (e) => {
   audio.unlock();
-  if (e.button === 2 || e.clientX > window.innerWidth * 0.5) {
-    table.setFlipperPressed('right', true);
-  } else {
-    table.setFlipperPressed('left', true);
-  }
+  const side: 'left' | 'right' = e.button === 2 || e.clientX > window.innerWidth * 0.5 ? 'right' : 'left';
+  activeViewportPointers.set(e.pointerId, side);
+  syncViewportFlippers();
 });
-window.addEventListener('pointerup', (e) => {
-  if (e.button === 2 || e.clientX > window.innerWidth * 0.5) {
-    table.setFlipperPressed('right', false);
-  } else {
-    table.setFlipperPressed('left', false);
+
+function releaseViewportPointer(e: PointerEvent): void {
+  if (activeViewportPointers.delete(e.pointerId)) {
+    syncViewportFlippers();
+  }
+}
+
+window.addEventListener('pointerup', releaseViewportPointer);
+window.addEventListener('pointercancel', releaseViewportPointer);
+window.addEventListener('blur', () => {
+  if (activeViewportPointers.size > 0) {
+    activeViewportPointers.clear();
+    syncViewportFlippers();
   }
 });
 window.addEventListener('contextmenu', (e) => e.preventDefault());
